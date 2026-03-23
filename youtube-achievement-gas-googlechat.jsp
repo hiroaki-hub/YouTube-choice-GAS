@@ -33,8 +33,8 @@ function getConfig() {
     SPREADSHEET_ID:          props.SPREADSHEET_ID,
     CHANNEL_ID:              props.CHANNEL_ID,
     SHEET_NAME:              'sent_videos_achievement',
-    KIE_ENDPOINT: 'https://api.kie.ai/claude/v1/messages',
-    KIE_MODEL:    'claude-sonnet-4-6',
+    KIE_ENDPOINT: props.KIE_ENDPOINT || 'https://api.kie.ai/gemini-3-flash/v1/chat/completions',
+    KIE_MODEL:    props.KIE_MODEL || 'gemini-3-flash',
   };
 }
 
@@ -291,8 +291,25 @@ function formatViewCount(n) {
   return n.toLocaleString() + '回';
 }
 
+// KIE AI Gemini 3 Flash（OpenAI互換 chat/completions）の assistant 本文を取得
+function kieOpenAiExtractMessageText(result) {
+  var ch = result.choices && result.choices[0] && result.choices[0].message;
+  if (!ch || ch.content == null) return '';
+  var c = ch.content;
+  if (typeof c === 'string') return c;
+  if (c.length !== undefined) {
+    var out = [];
+    for (var i = 0; i < c.length; i++) {
+      var p = c[i];
+      if (p && p.type === 'text' && p.text) out.push(p.text);
+    }
+    return out.join('');
+  }
+  return '';
+}
+
 // =============================================
-// KIE AI（Claude Sonnet 4.6 / Messages API）で動画選定
+// KIE AI（Gemini 3 Flash / OpenAI互換）で動画選定
 // =============================================
 function judgeWithKieAI(videos, count, themeLabel, cfg) {
   var list = videos.map(function(v, i) {
@@ -325,10 +342,13 @@ function judgeWithKieAI(videos, count, themeLabel, cfg) {
     },
     payload: JSON.stringify({
       model: cfg.KIE_MODEL,
-      max_tokens: 500,
-      system: 'あなたはマネジメント・経営・人材育成の専門キュレーターです。指示されたJSON形式のみを返してください。前後の説明は一切不要です。',
-      messages: [{ role: 'user', content: prompt }],
-      stream: false
+      max_tokens: 800,
+      stream: false,
+      include_thoughts: false,
+      messages: [
+        { role: 'system', content: 'あなたはマネジメント・経営・人材育成の専門キュレーターです。指示されたJSON形式のみを返してください。前後の説明は一切不要です。' },
+        { role: 'user', content: prompt }
+      ]
     })
   });
 
@@ -343,12 +363,11 @@ function judgeWithKieAI(videos, count, themeLabel, cfg) {
   try {
     var rawText = res.getContentText();
     var result = JSON.parse(rawText);
-    var aiText = '';
-    if (result.content && result.content[0] && result.content[0].text) {
+    var aiText = kieOpenAiExtractMessageText(result);
+    if (!aiText && result.content && result.content[0] && result.content[0].text) {
       aiText = result.content[0].text;
-    } else if (result.choices && result.choices[0] && result.choices[0].message) {
-      aiText = result.choices[0].message.content;
-    } else {
+    }
+    if (!aiText) {
       Logger.log('AI応答の構造が不明: ' + rawText.slice(0, 500));
       throw new Error('未知の応答形式');
     }

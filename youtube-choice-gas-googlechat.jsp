@@ -24,8 +24,8 @@ function getConfig() {
     SPREADSHEET_ID:          props.SPREADSHEET_ID,
     CHAT_ENDPOINT_SECRET:    props.CHAT_ENDPOINT_SECRET || '',
     SHEET_NAME:              props.SHEET_NAME || 'sent_videos_googlechat',
-    KIE_ENDPOINT: 'https://api.kie.ai/claude/v1/messages',
-    KIE_MODEL:    'claude-sonnet-4-6',
+    KIE_ENDPOINT: props.KIE_ENDPOINT || 'https://api.kie.ai/gemini-3-flash/v1/chat/completions',
+    KIE_MODEL:    props.KIE_MODEL || 'gemini-3-flash',
   };
 }
 
@@ -298,8 +298,25 @@ function formatViewCount(n) {
   return n.toLocaleString() + '回';
 }
 
+// KIE AI Gemini 3 Flash（OpenAI互換 chat/completions）の assistant 本文を取得
+function kieOpenAiExtractMessageText(result) {
+  var ch = result.choices && result.choices[0] && result.choices[0].message;
+  if (!ch || ch.content == null) return '';
+  var c = ch.content;
+  if (typeof c === 'string') return c;
+  if (c.length !== undefined) {
+    var out = [];
+    for (var i = 0; i < c.length; i++) {
+      var p = c[i];
+      if (p && p.type === 'text' && p.text) out.push(p.text);
+    }
+    return out.join('');
+  }
+  return '';
+}
+
 // =============================================
-// 共通：KIE AI (Claude Sonnet 4.6) で動画選定
+// 共通：KIE AI（Gemini 3 Flash / OpenAI互換）で動画選定
 // =============================================
 function judgeWithKieAI(videos, count, instruction, cfg) {
   var list = videos.map(function(v, i) {
@@ -334,11 +351,12 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
     payload: JSON.stringify({
       model: cfg.KIE_MODEL,
       max_tokens: 1000,
-      system: 'あなたはAI技術のキュレーターです。指示されたJSON形式のみを返してください。前後の説明は一切不要です。',
+      stream: false,
+      include_thoughts: false,
       messages: [
+        { role: 'system', content: 'あなたはAI技術のキュレーターです。指示されたJSON形式のみを返してください。前後の説明は一切不要です。' },
         { role: 'user', content: prompt }
-      ],
-      stream: false
+      ]
     })
   });
 
@@ -351,12 +369,18 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
 
   var picks;
   try {
-    var result = JSON.parse(res.getContentText());
-    var text = result.content[0].text.trim()
-      .replace(/```json|```/g, '').trim();
+    var rawText = res.getContentText();
+    var result = JSON.parse(rawText);
+    var aiText = kieOpenAiExtractMessageText(result);
+    if (!aiText) {
+      Logger.log('AI応答の構造が不明: ' + rawText.slice(0, 500));
+      throw new Error('未知の応答形式');
+    }
+    var text = aiText.trim().replace(/```json|```/g, '').trim();
     picks = JSON.parse(text);
   } catch (parseErr) {
     Logger.log('AI応答のパースに失敗: ' + parseErr.message);
+    Logger.log('AI応答(先頭500文字): ' + res.getContentText().slice(0, 500));
     var fb2 = {}; for (var k2 in videos[0]) fb2[k2] = videos[0][k2];
     fb2.reason = '（AI応答の解析に失敗したため先頭の動画を自動選出）';
     return [fb2].slice(0, count);
@@ -379,6 +403,7 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
 // 共通：KIE AI でキーワード抽出
 // =============================================
 function extractSearchKeyword(text, cfg) {
+  var userContent = '現在は' + Utilities.formatDate(new Date(), TZ_TOKYO, 'yyyy') + '年です。次のメッセージからYouTube検索キーワードを10語以内で抽出。元のメッセージにない年号は追加しないでください。\n"' + text + '"';
   var res = UrlFetchApp.fetch(cfg.KIE_ENDPOINT, {
     method: 'POST',
     muteHttpExceptions: true,
@@ -388,19 +413,28 @@ function extractSearchKeyword(text, cfg) {
     },
     payload: JSON.stringify({
       model: cfg.KIE_MODEL,
-      max_tokens: 60,
-      system: 'YouTube検索に最適なキーワードのみを返してください。説明は不要です。ルール: ユーザーの言葉にない年号(2024,2025等)を勝手に追加しないこと。',
+      max_tokens: 120,
+      stream: false,
+      include_thoughts: false,
+      reasoning_effort: 'low',
       messages: [
-        { role: 'user', content: '現在は' + Utilities.formatDate(new Date(), TZ_TOKYO, 'yyyy') + '年です。次のメッセージからYouTube検索キーワードを10語以内で抽出。元のメッセージにない年号は追加しないでください。\n"' + text + '"' }
-      ],
-      stream: false
+        { role: 'system', content: 'YouTube検索に最適なキーワードのみを返してください。説明は不要です。ルール: ユーザーの言葉にない年号(2024,2025等)を勝手に追加しないこと。' },
+        { role: 'user', content: userContent }
+      ]
     })
   });
   if (res.getResponseCode() !== 200) {
     Logger.log('キーワード抽出APIエラー: ' + res.getResponseCode());
     return text;
   }
-  return JSON.parse(res.getContentText()).content[0].text.trim();
+  try {
+    var result = JSON.parse(res.getContentText());
+    var aiText = kieOpenAiExtractMessageText(result);
+    return (aiText || text).trim();
+  } catch (e) {
+    Logger.log('キーワード抽出のパース失敗: ' + e.message);
+    return text;
+  }
 }
 
 // =============================================
