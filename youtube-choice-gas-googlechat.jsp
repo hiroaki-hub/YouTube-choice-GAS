@@ -82,7 +82,7 @@ function notifyDailyAIVideo() {
     );
     if (!picked.length) return;
 
-    postToGoogleChat(picked, '🌅 今日のAI動画｜Claude自動ピックアップ', cfg);
+    postToGoogleChat(picked, '🌅 今日のAI動画｜AI自動ピックアップ', cfg);
     saveSentVideoIds(picked.map(function(v) { return v.videoId; }), cfg);
   } catch (e) {
     notifyError('モードA', e, getConfig());
@@ -334,7 +334,7 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
     + '- 具体的なデモ・コード・手順が含まれている動画を高く評価\n'
     + '- 最新のAI技術・研究・新しい視点がある\n'
     + '- 再生回数が多くても内容が薄い動画より、質の高い動画を優先\n'
-    + '- 極端に短い（2分未満）・長すぎる（60分超）動画は避ける\n'
+    + '- 10分未満の短い動画・30分を超える長尺動画は避ける（10分以上30分以内が理想）\n'
     + '- 単なる宣伝だけの動画は避ける\n'
     + '- できるだけ異なるチャンネルから選ぶ\n\n'
     + '【動画リスト】\n' + list + '\n\n'
