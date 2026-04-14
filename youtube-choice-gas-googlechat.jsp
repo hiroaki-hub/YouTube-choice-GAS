@@ -34,13 +34,13 @@ function getConfig() {
 // =============================================
 var DAILY_QUERY_KEYS = ['DAILY_QUERIES_SUN', 'DAILY_QUERIES_MON', 'DAILY_QUERIES_TUE', 'DAILY_QUERIES_WED', 'DAILY_QUERIES_THU', 'DAILY_QUERIES_FRI', 'DAILY_QUERIES_SAT'];
 var DAILY_QUERY_DEFAULTS = {
-  DAILY_QUERIES_SUN: 'AI 活用方法 使い方 チュートリアル 解説',
-  DAILY_QUERIES_MON: 'ChatGPT Claude 実践テクニック 使い方 Tips',
-  DAILY_QUERIES_TUE: 'AIエージェント 自動化 作り方 チュートリアル',
-  DAILY_QUERIES_WED: 'プロンプトエンジニアリング 書き方 テクニック 実践',
-  DAILY_QUERIES_THU: '生成AI 画像生成 動画生成 使い方 解説',
-  DAILY_QUERIES_FRI: 'AI プログラミング コーディング Copilot チュートリアル',
-  DAILY_QUERIES_SAT: 'AI 業務効率化 活用事例 やり方 解説',
+  DAILY_QUERIES_SUN: 'AI Web制作',
+  DAILY_QUERIES_MON: 'AI ノーコード サイト',
+  DAILY_QUERIES_TUE: 'Webデザイン AI',
+  DAILY_QUERIES_WED: 'WordPress 作り方',
+  DAILY_QUERIES_THU: 'AI コーディング',
+  DAILY_QUERIES_FRI: 'ホームページ 作成 AI',
+  DAILY_QUERIES_SAT: 'Webサイト 制作',
 };
 
 var TZ_TOKYO = 'Asia/Tokyo';
@@ -218,7 +218,7 @@ function manualSearchSample() {
 // =============================================
 function searchYouTube(query, sentIds, maxResults, cfg) {
   var since = new Date();
-  since.setMonth(since.getMonth() - 1);
+  since.setMonth(since.getMonth() - 3);
 
   var url = 'https://www.googleapis.com/youtube/v3/search'
     + '?part=snippet&type=video&order=relevance&videoCategoryId=28'
@@ -322,20 +322,23 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
   var list = videos.map(function(v, i) {
     var parts = ['[' + (i + 1) + '] タイトル: ' + v.title, 'チャンネル: ' + v.channelTitle];
     if (v.viewCount != null) parts.push('再生回数: ' + formatViewCount(v.viewCount));
+    if (v.likeCount != null && v.likeCount > 0) parts.push('高評価数: ' + v.likeCount);
     if (v.duration) parts.push('動画の長さ: ' + formatDuration(v.duration));
-    parts.push('概要: ' + v.description);
+    if (v.description) parts.push('概要: ' + v.description);
     return parts.join('\n');
   }).join('\n\n');
 
   var prompt = '以下の動画リストから、' + instruction + 'を選んでください。\n\n'
-    + '選定基準（テクニカル・解説系を優先）:\n'
-    + '- チュートリアル・解説・使い方・実践Tipsなどテクニカルな内容を最優先\n'
-    + '- ニュース報道・速報・ストレートニュースは避ける（技術解説を含むニュースはOK）\n'
-    + '- 具体的なデモ・コード・手順が含まれている動画を高く評価\n'
-    + '- 最新のAI技術・研究・新しい視点がある\n'
-    + '- 再生回数が多くても内容が薄い動画より、質の高い動画を優先\n'
-    + '- 10分未満の短い動画・30分を超える長尺動画は避ける（10分以上30分以内が理想）\n'
-    + '- 単なる宣伝だけの動画は避ける\n'
+    + '選定基準:\n'
+    + '- 日本語の動画を最優先で選ぶこと（タイトル・チャンネル名が日本語の動画を優先。英語タイトルの海外動画は日本語の候補がない場合のみ選ぶ）\n'
+    + '- 初級〜中級者でも理解しやすく、分かりやすい説明がある動画を優先\n'
+    + '- 実演・画面操作・ハンズオンなど「見ればマネできる」内容を高く評価\n'
+    + '- 入門・使い方・活用法・実践Tipsなど、すぐ役立つ内容を重視\n'
+    + '- ニュース報道・速報・ストレートニュースは避ける（解説・考察を含むニュースはOK）\n'
+    + '- 再生回数・高評価数が多い動画は視聴者の満足度が高い可能性があるので考慮する\n'
+    + '- 再生回数が多くても内容が薄い・タイトル詐欺の動画は避ける\n'
+    + '- 10分未満の短い動画・30分を超える長尺動画は避ける（10〜30分が理想）\n'
+    + '- 単なる宣伝・製品紹介だけの動画は避ける\n'
     + '- できるだけ異なるチャンネルから選ぶ\n\n'
     + '【動画リスト】\n' + list + '\n\n'
     + '以下のJSONのみ返してください（前後の説明不要）:\n'
@@ -354,7 +357,7 @@ function judgeWithKieAI(videos, count, instruction, cfg) {
       stream: false,
       include_thoughts: false,
       messages: [
-        { role: 'system', content: 'あなたはAI技術のキュレーターです。指示されたJSON形式のみを返してください。前後の説明は一切不要です。' },
+        { role: 'system', content: 'あなたはAI活用の動画キュレーターです。初級〜中級者にとって分かりやすく役に立つ動画を選ぶのが得意です。指示されたJSON形式のみを返してください。前後の説明は一切不要です。' },
         { role: 'user', content: prompt }
       ]
     })
