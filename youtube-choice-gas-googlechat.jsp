@@ -34,13 +34,13 @@ function getConfig() {
 // =============================================
 var DAILY_QUERY_KEYS = ['DAILY_QUERIES_SUN', 'DAILY_QUERIES_MON', 'DAILY_QUERIES_TUE', 'DAILY_QUERIES_WED', 'DAILY_QUERIES_THU', 'DAILY_QUERIES_FRI', 'DAILY_QUERIES_SAT'];
 var DAILY_QUERY_DEFAULTS = {
-  DAILY_QUERIES_SUN: 'AI Web制作',
-  DAILY_QUERIES_MON: 'AI ノーコード サイト',
-  DAILY_QUERIES_TUE: 'Webデザイン AI',
-  DAILY_QUERIES_WED: 'WordPress 作り方',
-  DAILY_QUERIES_THU: 'AI コーディング',
-  DAILY_QUERIES_FRI: 'ホームページ 作成 AI',
-  DAILY_QUERIES_SAT: 'Webサイト 制作',
+  DAILY_QUERIES_SUN: 'Claude Code 入門 使い方',
+  DAILY_QUERIES_MON: 'Claude Code 新機能 最新',
+  DAILY_QUERIES_TUE: 'Claude Code MCP 拡張機能',
+  DAILY_QUERIES_WED: 'Claude Code Cursor 連携 使い方',
+  DAILY_QUERIES_THU: 'Claude Code 自動化 AIエージェント',
+  DAILY_QUERIES_FRI: 'Claude Code 実践 チュートリアル',
+  DAILY_QUERIES_SAT: 'Anthropic Claude コーディング Tips',
 };
 
 var TZ_TOKYO = 'Asia/Tokyo';
@@ -73,7 +73,7 @@ function notifyDailyAIVideo() {
     var query = getDailyQuery();
     var rawVideos = searchYouTube(query, sentIds, 20, cfg);
     if (!rawVideos.length) { Logger.log('新しい動画なし'); return; }
-    var videos = enrichWithStats(rawVideos, cfg);
+    var videos = sortByViewCount(enrichWithStats(rawVideos, cfg));
 
     var picked = judgeWithKieAI(
       videos, 1,
@@ -82,7 +82,7 @@ function notifyDailyAIVideo() {
     );
     if (!picked.length) return;
 
-    postToGoogleChat(picked, '🌅 今日のAI動画｜AI自動ピックアップ', cfg);
+    postToGoogleChat(picked, '🌅 今日のAI動画｜AI自動ピックアップ｜🔎 ' + query, cfg);
     saveSentVideoIds(picked.map(function(v) { return v.videoId; }), cfg);
   } catch (e) {
     notifyError('モードA', e, getConfig());
@@ -183,7 +183,7 @@ function runRequestSearchGoogleChat() {
         postRawGoogleChat('😢 「' + searchQuery + '」に関する新着動画が見つかりませんでした。', cfg);
         return;
       }
-      var videos = enrichWithStats(rawVideos, cfg);
+      var videos = sortByViewCount(enrichWithStats(rawVideos, cfg));
 
       var picked = judgeWithKieAI(
         videos, 1,
@@ -212,6 +212,41 @@ function manualSearchSample() {
   );
   runRequestSearchGoogleChat();
 }
+
+// 指定クエリキーで動作確認（共通処理）
+function _testDailyQueryByKey(key) {
+  try {
+    var cfg = getConfig();
+    var props = PropertiesService.getScriptProperties().getProperties();
+    var query = (props[key] && props[key].trim()) ? props[key].trim() : DAILY_QUERY_DEFAULTS[key];
+    Logger.log('[テスト] クエリキー: ' + key + ' / クエリ: ' + query);
+    var sentIds = getSentVideoIds(cfg);
+    var rawVideos = searchYouTube(query, sentIds, 20, cfg);
+    if (!rawVideos.length) {
+      postRawGoogleChat('【テスト: ' + key + '】😢 「' + query + '」に関する新着動画が見つかりませんでした。', cfg);
+      return;
+    }
+    var videos = sortByViewCount(enrichWithStats(rawVideos, cfg));
+    var picked = judgeWithKieAI(
+      videos, 1,
+      '実用Tips系と最新技術系をバランスよく考慮し、最も独自性・面白さがある動画を1本',
+      cfg
+    );
+    if (!picked.length) return;
+    postToGoogleChat(picked, '🧪 テスト投稿【' + key + '】クエリ: ' + query, cfg);
+    Logger.log('[テスト完了] ' + key + ' → ' + picked[0].title);
+  } catch (e) {
+    notifyError('testDailyQuery_' + key, e, getConfig());
+  }
+}
+
+function testQuerySun() { _testDailyQueryByKey('DAILY_QUERIES_SUN'); }  // 日: Claude Code 入門 使い方
+function testQueryMon() { _testDailyQueryByKey('DAILY_QUERIES_MON'); }  // 月: Claude Code 新機能 最新
+function testQueryTue() { _testDailyQueryByKey('DAILY_QUERIES_TUE'); }  // 火: Claude Code MCP 拡張機能
+function testQueryWed() { _testDailyQueryByKey('DAILY_QUERIES_WED'); }  // 水: Claude Code Cursor 連携 使い方
+function testQueryThu() { _testDailyQueryByKey('DAILY_QUERIES_THU'); }  // 木: Claude Code 自動化 AIエージェント
+function testQueryFri() { _testDailyQueryByKey('DAILY_QUERIES_FRI'); }  // 金: Claude Code 実践 チュートリアル
+function testQuerySat() { _testDailyQueryByKey('DAILY_QUERIES_SAT'); }  // 土: Anthropic Claude コーディング Tips
 
 // =============================================
 // 共通：YouTube 検索
@@ -279,6 +314,12 @@ function enrichWithStats(videos, cfg) {
       thumbnail: v.thumbnail, url: v.url,
       viewCount: s.viewCount, likeCount: s.likeCount, duration: s.duration
     };
+  });
+}
+
+function sortByViewCount(videos) {
+  return videos.slice().sort(function(a, b) {
+    return (b.viewCount || 0) - (a.viewCount || 0);
   });
 }
 
